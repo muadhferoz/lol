@@ -211,21 +211,24 @@ class ImGui {
 	}
 
 	init() {
-        // Compute Height based on 10 rows maximum
-        const ITEMS_PER_COL = 10;
-        const visibleRows = Math.min(this.elements.length, ITEMS_PER_COL);
-        
-        // 20 pixels per row spacing
-		this.maxHeight = TAB_HEIGHT + (GAP * 2) + (visibleRows * 20);
-        
         // Calculate pagination
         this.totalPages = Math.ceil(this.elements.length / 40);
+        
+        // Compute max height explicitly based on 10 visible rows
+        const ITEMS_PER_COL = 10;
+        const visibleRows = Math.min(this.elements.length, ITEMS_PER_COL);
+        const ROW_HEIGHT = 18; // Slightly tighter spacing
+        
+		this.maxHeight = TAB_HEIGHT + (GAP * 2) + (visibleRows * ROW_HEIGHT);
+        
         if (this.totalPages > 1) {
             this.maxHeight += 25; // Add room for page indicator at bottom
         }
 
-        // Apply height (allow it to be smaller if user resized, triggering scrollbar)
-        this.height = Math.max(Math.min(this.height, this.maxHeight), this.minHeight);
+        // Force the initial height to equal the maxHeight so it doesn't draw a long skinny box
+        if (this.init_height > this.maxHeight) {
+            this.height = this.maxHeight;
+        }
 	}
 
 	resizeTrigDraw() {
@@ -286,8 +289,11 @@ class ImGui {
             
             // Grid Math
             const ITEMS_PER_COL = 10;
+            const ROW_HEIGHT = 18;
             const MAX_COLS = 4;
             const ITEMS_PER_PAGE = 40;
+            
+            // Calculate column width dynamically based on current window width
             const colWidth = (this.width - (GAP * 2)) / MAX_COLS;
 
             // Page Safety Check
@@ -302,7 +308,7 @@ class ImGui {
                 let row = relativeIndex % ITEMS_PER_COL;
 
 				var x = this.x + GAP + (col * colWidth);
-                var y = this.y - content_scroll + TAB_HEIGHT + GAP + (row * 20); // 20px per row
+                var y = this.y - content_scroll + TAB_HEIGHT + GAP + (row * ROW_HEIGHT);
 
 				if (!this.elements[i].hidden) this.elements[i].draw(x, y, colWidth);
 			}
