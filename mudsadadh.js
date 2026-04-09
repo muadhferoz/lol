@@ -72,9 +72,7 @@ class ImGui {
 		this.y = y;
 		this.width = width;
 		this.init_height = height;
-		this.height = height;
-		this.title = "ImGui JS"
-		
+		this.height = height;		
 		this.maxHeight;
 		this.scrollbar_active = false;
 		this.scroll_height = 0;
