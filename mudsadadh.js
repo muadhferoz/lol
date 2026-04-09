@@ -10,19 +10,13 @@ let windowHeight = window.innerHeight;
 const TAB_COLOR_SEL = "#c2c2c2"; 
 const TAB_COLOR_UNSEL = "#e0e0e0";
 const BACKGROUND = "#ffffff"; // White background
-const INTERACTABLE_BACKGROUND = "#f5f5f5";
-const SUBSECTION_BACKGROUND = "#f0f0f0";
 const SCROLLBAR_BACKGROUND = "#e0e0e0";
 const SCROLLBAR_COLOR = "#b5b5b5";
 const SCROLLBAR_COLOR_ACTIVE = "#858585";
-const INTERACTABLE_SELECT = "#4295f9";
-const INTERACTABLE_SELECT_MORE = "#336cae";
-const BUTTON_BACKGROUND = "#e0e0e0";
 const DEFAULT_FONT = "14px sans-serif";
 
 const TAB_HEIGHT = 15; // Kept small for invisible drag zone
 const GAP = 10;
-const BUTTON_SIZE = 20;
 
 //---------//
 let globalMouseX = 0;
@@ -87,16 +81,31 @@ class ImGui {
 		this.resizing_offsetY;
 		this.temp_width = width;
 		this.temp_height = height;
-		this.minWidth = 100; // Let it get smaller
+		this.minWidth = 150; 
 		this.minHeight = 100;
 
 		this.elements = [];
 		this.font = DEFAULT_FONT;
+        
+        // Paging variables
+        this.page = 0;
+        this.totalPages = 1;
 
 		this.c = canvas;
 		c = canvas;
 		this.ctx = this.c.getContext('2d');
 		ctx = this.ctx;
+
+        // Page Navigation Listener
+        document.addEventListener("keydown", (e) => {
+            if (!this.hidden && this.totalPages > 1) {
+                if (e.key === "ArrowRight") {
+                    this.page = Math.min(this.page + 1, this.totalPages - 1);
+                } else if (e.key === "ArrowLeft") {
+                    this.page = Math.max(this.page - 1, 0);
+                }
+            }
+        });
 
 		this.c.addEventListener("mousedown", (e) => {
 			if ((e.buttons == 1 || e.buttons == 2) && !this.hidden) 
@@ -167,7 +176,7 @@ class ImGui {
 		var minX = this.x;
 		var minY = this.y;
 		var maxX = this.x + this.width;
-		var maxY = this.y + TAB_HEIGHT; // Top 15px is the invisible drag zone
+		var maxY = this.y + TAB_HEIGHT; 
 
 		if (between(x, minX, maxX) && between(y, minY, maxY)) {
 			this.selected = true;
@@ -187,8 +196,7 @@ class ImGui {
 		var maxX = this.x - this.c.getBoundingClientRect().x + this.width;
 		var maxY = this.hidden ? this.y - this.c.getBoundingClientRect().y + TAB_HEIGHT : this.y - this.c.getBoundingClientRect().y + this.height;
 
-		if (between(x, minX, maxX) && between(y, minY, maxY)) return true;
-		return false;
+		return (between(x, minX, maxX) && between(y, minY, maxY));
 	}
 
 	staticText(text = "Placeholder", color = "black", center = false, font = DEFAULT_FONT) {
@@ -203,14 +211,21 @@ class ImGui {
 	}
 
 	init() {
-		this.height = Math.max(this.init_height, TAB_HEIGHT + GAP + (this.elements.length * (BUTTON_SIZE + GAP)));
-		for (var i = 0; i < this.elements.length; i++) {
-			if (this.elements[i].text && this.elements[i].text.includes("\n")) {
-				let lines = this.elements[i].text.split("\n");
-				this.height += (lines.length - 1) * 14;
-			}
-		}
-		this.maxHeight = this.height;
+        // Compute Height based on 10 rows maximum
+        const ITEMS_PER_COL = 10;
+        const visibleRows = Math.min(this.elements.length, ITEMS_PER_COL);
+        
+        // 20 pixels per row spacing
+		this.maxHeight = TAB_HEIGHT + (GAP * 2) + (visibleRows * 20);
+        
+        // Calculate pagination
+        this.totalPages = Math.ceil(this.elements.length / 40);
+        if (this.totalPages > 1) {
+            this.maxHeight += 25; // Add room for page indicator at bottom
+        }
+
+        // Apply height (allow it to be smaller if user resized, triggering scrollbar)
+        this.height = Math.max(Math.min(this.height, this.maxHeight), this.minHeight);
 	}
 
 	resizeTrigDraw() {
@@ -262,21 +277,43 @@ class ImGui {
 			ctx.save();
 			clip_rect(this.x, this.y, this.width, this.height)
             
-            // Draw a single seamless minimal white box
 			round_rect(this.x, this.y, this.width, this.height, BACKGROUND, 5);
 			clip_rect(this.x, this.y, this.width, this.height)
 
-			const height = ( 1 - ( this.height / this.maxHeight ) ) * (this.height - (GAP * 2) - TAB_HEIGHT - GAP/2)
-			
-			for (var i = 0; i < this.elements.length; i++) {
-				var x = this.x + GAP;
-				const content_scroll = (this.scroll_height / height) * (this.maxHeight - this.height) || 0; 
-				var y = (this.y - content_scroll ) + TAB_HEIGHT;
-				if (i > 0) y += this.elements[i-1].y - this.y + content_scroll;
-				if (i > 0 && this.elements[i-1].text.includes("\n")) y += 14 * (this.elements[i-1].text.split("\n").length - 1);
+            // Scrollbar math (only active if height was manually resized smaller than maxHeight)
+            const scrollRatio = this.height < this.maxHeight ? (this.height - (GAP * 2) - TAB_HEIGHT - GAP/2) : 1;
+            const content_scroll = this.height < this.maxHeight ? (this.scroll_height / scrollRatio) * (this.maxHeight - this.height) || 0 : 0;
+            
+            // Grid Math
+            const ITEMS_PER_COL = 10;
+            const MAX_COLS = 4;
+            const ITEMS_PER_PAGE = 40;
+            const colWidth = (this.width - (GAP * 2)) / MAX_COLS;
 
-				if (!this.elements[i].hidden) this.elements[i].draw(x, y, this.width);
+            // Page Safety Check
+            if (this.page >= this.totalPages) this.page = Math.max(0, this.totalPages - 1);
+            
+            const startIndex = this.page * ITEMS_PER_PAGE;
+            const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, this.elements.length);
+			
+			for (var i = startIndex; i < endIndex; i++) {
+                let relativeIndex = i - startIndex;
+                let col = Math.floor(relativeIndex / ITEMS_PER_COL);
+                let row = relativeIndex % ITEMS_PER_COL;
+
+				var x = this.x + GAP + (col * colWidth);
+                var y = this.y - content_scroll + TAB_HEIGHT + GAP + (row * 20); // 20px per row
+
+				if (!this.elements[i].hidden) this.elements[i].draw(x, y, colWidth);
 			}
+
+            // Draw Page Indicator if needed
+            if (this.totalPages > 1) {
+                let textY = this.y - content_scroll + this.maxHeight - GAP;
+                ctx.fillStyle = "#858585";
+                ctx.font = "12px sans-serif";
+                ctx.fillText(`Page ${this.page + 1}/${this.totalPages} (Use ◀ ▶)`, this.x + GAP, textY);
+            }
 
 			this.scrollbarDraw();
 			this.resizeTrigDraw();
@@ -311,7 +348,8 @@ class StaticText {
 				this.x -= GAP + textWidth
 				this.x += (textWidth+width)/2
 			}
-			ImGui.text(lines[i], this.x, this.y + 14 * (i + 1), this.color, this.font);
+            // Start text rendering smoothly based on the passed Y anchor
+			ImGui.text(lines[i], this.x, this.y + 14, this.color, this.font);
 			this.x = x; 
 		}
 	}
